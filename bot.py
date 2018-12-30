@@ -3,29 +3,61 @@ import urllib
 from io import StringIO
 import csv
 import sys
+import threading
+import time
 
 query = """[[Category::Hackerspace]]
 [[Hackerspace status::active]]
 [[Website::+]]
 """
 field = "Website"
+attributes = {}
+attributes["format"] = "csv"
+attributes["limit"] = "500"
+attributes["sort"] = "Modification date"
+attributes["oder"] = "asc"
+
+
+attributes_url = ""
+for key, value in attributes.items():
+    attributes_url +=  "&p%5b" + urllib.parse.quote(key) + "%5d=" + urllib.parse.quote(value)
 
 #csv
 url = "https://wiki.hackerspaces.org/w/index.php?title=Special%3AAsk&q=" + \
     urllib.parse.quote(query.replace("\n","")) + \
     "&po=" + \
     urllib.parse.quote(field) + \
-    "&eq=yes&p%5Bformat%5D=csv&sort%5B0%5D=Modification+date&order%5B0%5D=ASC&sort_num=&order_num=ASC&p%5Blimit%5D=&p%5Boffset%5D=&p%5Blink%5D=all&p%5Bsort%5D=Modification+date&p%5Border%5D%5Basc%5D=1&p%5Bheaders%5D=show&p%5Bmainlabel%5D=&p%5Bintro%5D=&p%5Boutro%5D=&p%5Bsearchlabel%5D=...+further+results&p%5Bdefault%5D=&p%5Bsep%5D=%2C&p%5Bfilename%5D=result.csv&eq=yes"
+    attributes_url
 
+#print(url)
+#exit()
+
+class get_http_status (threading.Thread):
+    def __init__(self, hackerspace):
+        threading.Thread.__init__(self)
+        self.hackerspace = hackerspace
+    def run(self):
+        try:
+            status = urllib.request.urlopen(self.hackerspace[1]).getcode()
+        except Exception:
+            status = "xxx"
+        print("\"" + self.hackerspace[0] + "\"," + str(status) + "," + self.hackerspace[1])
+        sys.stdout.flush()
+
+
+threads = []
 request = requests.get(url)
 stream = StringIO(request.text)
 hackerspaces = csv.reader(stream, delimiter=',')
 headers = next(hackerspaces, None)
-print("Hackerspace,","Status,",field)
+print("Hackerspace,Status,"+field)
 for hackerspace in hackerspaces:
-    try:
-        status = urllib.request.urlopen(hackerspace[1]).getcode()
-    except Exception:
-        status = "xxx"
-    print("\"" + hackerspace[0] + "\"," + str(status) + "," + hackerspace[1])
-    sys.stdout.flush()
+    while threading.active_count() > 80:
+        time.sleep(1)
+    thread = get_http_status(hackerspace)
+    thread.start()
+    threads.append(thread)
+
+
+for thread in threads:
+    thread.join()
